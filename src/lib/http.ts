@@ -2,10 +2,15 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import { AgentError } from "./agents";
+import { DbConfigError } from "./db";
 import { QuizError } from "./service";
 
 /** Turn thrown errors into kid-safe JSON responses, keeping details in the server log. */
 export function errorResponse(err: unknown) {
+  if (err instanceof DbConfigError) {
+    console.error(err.message);
+    return NextResponse.json({ error: err.message }, { status: 503 });
+  }
   if (err instanceof QuizError) return NextResponse.json({ error: err.message }, { status: 400 });
   if (err instanceof AgentError) return NextResponse.json({ error: err.message }, { status: 502 });
   if (err instanceof Anthropic.RateLimitError) {

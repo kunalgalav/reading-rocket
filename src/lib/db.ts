@@ -43,11 +43,37 @@ const SCHEMA = [
    )`,
 ];
 
+/**
+ * Find the Postgres connection string. Vercel's Neon integration may add a prefix
+ * (e.g. STORAGE_DATABASE_URL), so accept the common names and any *_DATABASE_URL / *_POSTGRES_URL.
+ */
+export function databaseUrl(): string | undefined {
+  const env = process.env;
+  if (env.DATABASE_URL) return env.DATABASE_URL;
+  if (env.POSTGRES_URL) return env.POSTGRES_URL;
+  const key = Object.keys(env)
+    .filter((k) => /(^|_)(DATABASE|POSTGRES)_URL$/.test(k) && env[k]?.startsWith("postgres"))
+    .sort()[0];
+  return key ? env[key] : undefined;
+}
+
+export class DbConfigError extends Error {}
+
+export function dbDriver(): "neon" | "pglite" | "missing" {
+  if (databaseUrl()) return "neon";
+  return process.env.VERCEL ? "missing" : "pglite";
+}
+
 async function connect(): Promise<Db> {
   let db: Db;
-  if (process.env.DATABASE_URL) {
+  const url = databaseUrl();
+  if (!url && process.env.VERCEL) {
+    // Vercel's filesystem is read-only, so the embedded database can't work there.
+    throw new DbConfigError("No database connected. In Vercel, connect a Neon database under Storage, then redeploy.");
+  }
+  if (url) {
     const { neon } = await import("@neondatabase/serverless");
-    const sql = neon(process.env.DATABASE_URL);
+    const sql = neon(url);
     db = {
       query: async <T,>(text: string, params: unknown[] = []) => (await sql.query(text, params)) as T[],
     };
