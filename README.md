@@ -1,36 +1,43 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🚀 Reading Rocket
 
-## Getting Started
+A reading tracker for a 7-year-old. He adds the books he finishes, takes a short quiz on each one, and watches his word count climb towards 1k / 10k / 100k / 500k / 1 million words. See `Claude.md` for the original brief.
 
-First, run the development server:
+## How it works
+
+| Step | Model | What happens |
+|---|---|---|
+| Add a book | `claude-haiku-5-5` | Estimates the book's word count from its title and author. A grown-up can correct it (PIN required). |
+| Reading level | `claude-sonnet-5-5` | A one-off **methodology** maps difficulty bands to the National Curriculum in England (KS1 to lower KS2) and sets points rules. Each book is then placed in a band: a similar level keeps the score flat, harder books raise it, and easier books never lower it. |
+| Quiz | `claude-sonnet-5-5` | 10 questions (7 multiple choice, 3 free text), each with a 🔊 read-aloud button. Sonnet marks free-text answers generously. |
+| Credit | none | **8+ correct** gives all the words, **5–7** gives half, **under 5** gives none. The same multiplier applies to the reading points. He gets one retry per book, and the best attempt counts. |
+
+Words count towards the totals only after the quiz. Weeks start on Monday.
+
+## Run locally
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env.local   # add ANTHROPIC_API_KEY
+npm install
+npm run dev                  # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Locally, data goes in an embedded Postgres (PGlite) under `./.data`. The passcode and PIN are optional locally.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm test         # unit tests: totals, milestones, quiz credit
+npm run lint && npm run typecheck && npm run build
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Deploy (Vercel)
 
-## Learn More
+1. Push this repo to GitHub and import it in Vercel.
+2. Add **Storage → Neon Postgres** to the project (this sets `DATABASE_URL`). Tables are created automatically.
+3. Set `ANTHROPIC_API_KEY`, `FAMILY_PASSCODE` and `PARENT_PIN`. In production the site won't run without a passcode, and grown-up actions are locked without a PIN.
 
-To learn more about Next.js, take a look at the following resources:
+## Layout
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `src/lib/progress.ts`: pure logic (totals, milestones, credit rule), with tests in `progress.test.ts`
+- `src/lib/agents.ts`: the Claude calls (structured JSON output via Zod)
+- `src/lib/service.ts`: book, quiz and methodology flows on top of the database
+- `src/lib/db.ts`: SQL layer (Neon in production, PGlite locally) and the schema
+- `src/app/api/*`: route handlers; `src/middleware.ts`: passcode gate
