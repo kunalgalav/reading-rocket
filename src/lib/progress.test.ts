@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { creditMultiplier, milestoneProgress, parseDay, startOfWeek, summarize, toDay } from "./progress";
+import { creditMultiplier, milestoneProgress, parseDay, sentencePoints, startOfWeek, summarize, toDay, weekRange } from "./progress";
 
 describe("startOfWeek", () => {
   it("returns Monday for any day of the week", () => {
@@ -31,6 +31,22 @@ describe("milestoneProgress", () => {
     expect(milestoneProgress(0)).toMatchObject({ next: 1000, previous: 0, fraction: 0 });
     expect(milestoneProgress(5500)).toMatchObject({ reached: [1000], next: 10000, fraction: 0.5 });
     expect(milestoneProgress(2_000_000)).toMatchObject({ next: null, fraction: 1 });
+  });
+});
+
+describe("sentencePoints", () => {
+  it("rewards higher curriculum levels, and only when the word is used correctly", () => {
+    expect(sentencePoints("year2", true)).toBe(1);
+    expect(sentencePoints("year4_plus", true)).toBe(2);
+    expect(sentencePoints("year4_plus", false)).toBe(0);
+    expect(sentencePoints("not_yet", true)).toBe(0);
+  });
+});
+
+describe("weekRange", () => {
+  it("covers Monday to Sunday", () => {
+    expect(weekRange(parseDay("2026-11-15"))).toEqual({ start: "2026-11-09", end: "2026-11-15" });
+    expect(weekRange(parseDay("2026-11-16"))).toEqual({ start: "2026-11-16", end: "2026-11-22" });
   });
 });
 

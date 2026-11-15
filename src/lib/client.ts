@@ -1,32 +1,12 @@
 "use client";
 
-const PIN_KEY = "parent-pin";
-
-export function getParentPin(): string {
-  try {
-    return sessionStorage.getItem(PIN_KEY) ?? "";
-  } catch {
-    return "";
-  }
-}
-
-export function setParentPin(pin: string) {
-  try {
-    if (pin) sessionStorage.setItem(PIN_KEY, pin);
-    else sessionStorage.removeItem(PIN_KEY);
-  } catch {
-    /* storage unavailable: PIN just won't be remembered */
-  }
-}
-
 /** JSON fetch that throws the server's friendly error message. */
-export async function api<T>(path: string, init: RequestInit & { json?: unknown; parent?: boolean } = {}): Promise<T> {
-  const { json, parent, headers, ...rest } = init;
+export async function api<T>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
+  const { json, headers, ...rest } = init;
   const response = await fetch(path, {
     ...rest,
     headers: {
       ...(json !== undefined ? { "content-type": "application/json" } : {}),
-      ...(parent ? { "x-parent-pin": getParentPin() } : {}),
       ...headers,
     },
     body: json !== undefined ? JSON.stringify(json) : rest.body,

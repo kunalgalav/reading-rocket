@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { isParent } from "@/lib/auth";
+import { isParent } from "@/lib/parent";
 import { errorResponse, parentOnly } from "@/lib/http";
 import { deleteBook, getBook, setWords } from "@/lib/service";
 
@@ -18,7 +18,7 @@ export async function GET(_request: Request, { params }: Ctx) {
 const Patch = z.object({ words: z.number().int().min(0).max(2_000_000) });
 
 export async function PATCH(request: Request, { params }: Ctx) {
-  if (!isParent(request)) return parentOnly();
+  if (!(await isParent())) return parentOnly();
   const parsed = Patch.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Enter a whole number of words." }, { status: 400 });
   try {
@@ -29,8 +29,8 @@ export async function PATCH(request: Request, { params }: Ctx) {
   }
 }
 
-export async function DELETE(request: Request, { params }: Ctx) {
-  if (!isParent(request)) return parentOnly();
+export async function DELETE(_request: Request, { params }: Ctx) {
+  if (!(await isParent())) return parentOnly();
   try {
     await deleteBook(Number((await params).id));
     return NextResponse.json({ ok: true });

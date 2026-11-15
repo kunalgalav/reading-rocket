@@ -1,7 +1,17 @@
 import "server-only";
-import { assessLevel, estimateWords, generateMethodology, generateQuiz, markFreeText, Rubric, type QuizQuestion } from "./agents";
-import { getDb, type BookRow } from "./db";
-import { creditMultiplier, MAX_QUIZ_ATTEMPTS, milestoneProgress, summarize, toDay } from "./progress";
+import {
+  assessLevel,
+  estimateWords,
+  generateMethodology,
+  generateQuiz,
+  judgeSentences,
+  markFreeText,
+  pickVocabulary,
+  Rubric,
+  type QuizQuestion,
+} from "./agents";
+import { getDb, type BookRow, type VocabWord } from "./db";
+import { creditMultiplier, MAX_QUIZ_ATTEMPTS, milestoneProgress, sentencePoints, summarize, toDay, type SentenceLevel } from "./progress";
 
 // ---------- Methodology ----------
 
@@ -44,13 +54,20 @@ export async function addBook(input: { title: string; author: string | null; fin
     [input.title, input.author, input.finished_on, estimate.estimated_words, estimate.confidence, estimate.notes],
   );
 
-  // Level scoring is best-effort: the book is still saved if it fails, and can be re-scored later.
-  try {
-    return await scoreLevel(book);
-  } catch (err) {
-    console.error("Level assessment failed", err);
-    return book;
-  }
+  // Level scoring and tricky words are best-effort: the book is saved even if they fail.
+  const [level, vocab] = await Promise.allSettled([scoreLevel(book), ensureVocab(book)]);
+  if (level.status === "rejected") console.error("Level assessment failed", level.reason);
+  if (vocab.status === "rejected") console.error("Picking tricky words failed", vocab.reason);
+  return (await getBook(book.id)) ?? book;
+}
+
+/** The book's 3 tricky words, picked by Sonnet once and stored. */
+async function ensureVocab(book: BookRow): Promise<VocabWord[]> {
+  if (book.vocab?.length) return book.vocab;
+  const words = await pickVocabulary(book);
+  const db = await getDb();
+  await db.query("UPDATE books SET vocab = $2 WHERE id = $1", [book.id, JSON.stringify(words)]);
+  return words;
 }
 
 async function scoreLevel(book: BookRow): Promise<BookRow> {
@@ -93,7 +110,7 @@ export async function deleteBook(id: number): Promise<void> {
 export async function getStats(today = new Date()) {
   const books = await listBooks();
   const totals = summarize(books, today);
-  const readingScore = books.reduce((sum, b) => sum + (b.score_awarded ?? 0), 0);
+  const readingScore = books.reduce((sum, b) => sum + (b.score_awarded ?? 0) + (b.vocab_points ?? 0), 0);
   return {
     today: toDay(today),
     totals,
@@ -106,21 +123,55 @@ export async function getStats(today = new Date()) {
 
 // ---------- Quiz ----------
 
+/** Questions 11-13: write a sentence using each tricky word. Built from stored vocab, no extra model call. */
+export interface SentenceQuestion {
+  id: number;
+  kind: "sentence";
+  question: string;
+  options: string[];
+  word: string;
+  meaning: string;
+  example: string;
+}
+type StoredQuestion = QuizQuestion | SentenceQuestion;
+
 /** What the child's browser sees: no correct answers. */
-export type PublicQuestion = Pick<QuizQuestion, "id" | "kind" | "question" | "options">;
+export type PublicQuestion = {
+  id: number;
+  kind: StoredQuestion["kind"];
+  question: string;
+  options: string[];
+  word?: string;
+  meaning?: string;
+};
 
 interface AttemptRow {
   id: number;
   book_id: number;
   attempt: number;
-  questions: QuizQuestion[];
+  questions: StoredQuestion[];
   answers: unknown;
   correct: number | null;
   multiplier: number | null;
 }
 
-const toPublic = (qs: QuizQuestion[]): PublicQuestion[] =>
-  qs.map(({ id, kind, question, options }) => ({ id, kind, question, options }));
+const toPublic = (qs: StoredQuestion[]): PublicQuestion[] =>
+  qs.map((q) =>
+    q.kind === "sentence"
+      ? { id: q.id, kind: q.kind, question: q.question, options: [], word: q.word, meaning: q.meaning }
+      : { id: q.id, kind: q.kind, question: q.question, options: q.options },
+  );
+
+const sentenceQuestions = (vocab: VocabWord[], firstId: number): SentenceQuestion[] =>
+  vocab.map((v, i) => ({
+    id: firstId + i,
+    kind: "sentence",
+    question: `Write your own sentence using the word "${v.word}".`,
+    options: [],
+    word: v.word,
+    meaning: v.meaning,
+    example: v.example,
+  }));
 
 export class QuizError extends Error {}
 
@@ -136,12 +187,32 @@ export async function startQuiz(bookId: number) {
   if (attempts.some((a) => a.multiplier === 1)) throw new QuizError("You already got full marks on this book!");
   if (attempts.length >= MAX_QUIZ_ATTEMPTS) throw new QuizError("You've used both tries for this book.");
 
-  const questions = await generateQuiz(book);
+  const [comprehension, vocab] = await Promise.all([
+    generateQuiz(book),
+    ensureVocab(book).catch((err) => {
+      console.error("Picking tricky words failed; quiz continues without them", err);
+      return [] as VocabWord[];
+    }),
+  ]);
+  const questions: StoredQuestion[] = [...comprehension, ...sentenceQuestions(vocab, comprehension.length + 1)];
   const [row] = await db.query<AttemptRow>(
     "INSERT INTO quiz_attempts (book_id, attempt, questions) VALUES ($1, $2, $3) RETURNING *",
     [bookId, attempts.length + 1, JSON.stringify(questions)],
   );
   return { book, attemptId: row.id, attempt: row.attempt, questions: toPublic(questions) };
+}
+
+export interface QuestionResult {
+  id: number;
+  kind: StoredQuestion["kind"];
+  correct: boolean;
+  feedback: string;
+  // sentence questions only
+  word?: string;
+  sentence?: string;
+  level?: SentenceLevel;
+  used_word_correctly?: boolean;
+  points?: number;
 }
 
 export async function submitQuiz(attemptId: number, answers: (number | string | null)[]) {
@@ -153,50 +224,79 @@ export async function submitQuiz(attemptId: number, answers: (number | string | 
   if (!book) throw new QuizError("Book not found.");
 
   const questions = attempt.questions;
-  const freeText = questions
-    .map((q, i) => ({ q, answer: answers[i] }))
-    .filter(({ q }) => q.kind === "free_text")
-    .map(({ q, answer }) => ({ id: q.id, question: q.question, model_answer: q.model_answer, answer: String(answer ?? "").trim() }));
-  const marked = new Map((await markFreeText(book, freeText)).map((r) => [r.id, r]));
+  const text = (i: number) => String(answers[i] ?? "").trim();
 
-  const results = questions.map((q, i) => {
+  const freeText = questions.flatMap((q, i) =>
+    q.kind === "free_text" ? [{ id: q.id, question: q.question, model_answer: q.model_answer, answer: text(i) }] : [],
+  );
+  const sentences = questions.flatMap((q, i) =>
+    q.kind === "sentence" ? [{ id: q.id, word: q.word, meaning: q.meaning, sentence: text(i) }] : [],
+  );
+  const [marked, judged] = await Promise.all([
+    markFreeText(book, freeText).then((r) => new Map(r.map((m) => [m.id, m]))),
+    judgeSentences(sentences),
+  ]);
+
+  const results: QuestionResult[] = questions.map((q, i) => {
     if (q.kind === "multiple_choice") {
       const correct = answers[i] === q.correct_index;
       return {
         id: q.id,
+        kind: q.kind,
         correct,
         feedback: correct ? "Well done!" : `The answer was: ${q.options[q.correct_index] ?? q.model_answer}`,
       };
     }
-    const m = marked.get(q.id);
-    return { id: q.id, correct: m?.correct ?? false, feedback: m?.feedback ?? q.model_answer };
+    if (q.kind === "free_text") {
+      const m = marked.get(q.id);
+      return { id: q.id, kind: q.kind, correct: m?.correct ?? false, feedback: m?.feedback ?? q.model_answer };
+    }
+    const sq = q as SentenceQuestion; // only sentence questions remain here
+    const idx = sentences.findIndex((s) => s.id === sq.id);
+    const j = judged.find((r) => r.word.toLowerCase() === sq.word.toLowerCase()) ?? judged[idx];
+    const level = j?.level ?? "not_yet";
+    const used = j?.used_word_correctly ?? false;
+    const points = sentencePoints(level, used);
+    return {
+      id: sq.id,
+      kind: sq.kind,
+      correct: points > 0,
+      feedback: j ? `${j.strengths} ${j.next_step}` : `"${sq.word}" means ${sq.meaning}. For example: ${sq.example}`,
+      word: sq.word,
+      sentence: text(i),
+      level,
+      used_word_correctly: used,
+      points,
+    };
   });
 
-  const correct = results.filter((r) => r.correct).length;
-  const multiplier = creditMultiplier(correct, questions.length);
-  await db.query("UPDATE quiz_attempts SET answers = $2, results = $3, correct = $4, multiplier = $5 WHERE id = $1", [
-    attemptId,
-    JSON.stringify(answers),
-    JSON.stringify(results),
-    correct,
-    multiplier,
-  ]);
+  // Word credit uses only the comprehension questions; sentences only add reading points.
+  const comprehension = results.filter((r) => r.kind !== "sentence");
+  const correct = comprehension.filter((r) => r.correct).length;
+  const multiplier = creditMultiplier(correct, comprehension.length);
+  const vocabPoints = results.reduce((sum, r) => sum + (r.points ?? 0), 0);
 
-  // The book keeps its best attempt.
-  const [best] = await db.query<{ multiplier: number }>(
-    "SELECT MAX(multiplier) AS multiplier FROM quiz_attempts WHERE book_id = $1",
+  await db.query(
+    "UPDATE quiz_attempts SET answers = $2, results = $3, correct = $4, multiplier = $5, vocab_points = $6 WHERE id = $1",
+    [attemptId, JSON.stringify(answers), JSON.stringify(results), correct, multiplier, vocabPoints],
+  );
+
+  // The book keeps its best attempt for each kind of score.
+  const [best] = await db.query<{ multiplier: number; vocab_points: number }>(
+    "SELECT MAX(multiplier) AS multiplier, MAX(vocab_points) AS vocab_points FROM quiz_attempts WHERE book_id = $1",
     [book.id],
   );
   const bestMultiplier = Number(best.multiplier);
   const [updated] = await db.query<BookRow>(
-    "UPDATE books SET credited_words = $2, score_awarded = $3 WHERE id = $1 RETURNING *",
-    [book.id, Math.round(book.words * bestMultiplier), (book.level_delta ?? 0) * bestMultiplier],
+    "UPDATE books SET credited_words = $2, score_awarded = $3, vocab_points = $4 WHERE id = $1 RETURNING *",
+    [book.id, Math.round(book.words * bestMultiplier), (book.level_delta ?? 0) * bestMultiplier, Number(best.vocab_points ?? 0)],
   );
 
   return {
     correct,
-    total: questions.length,
+    total: comprehension.length,
     multiplier,
+    vocabPoints,
     results,
     book: updated,
     canRetry: multiplier < 1 && attempt.attempt < MAX_QUIZ_ATTEMPTS,

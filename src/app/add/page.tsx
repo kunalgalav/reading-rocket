@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { BookRow } from "@/lib/db";
-import { api } from "@/lib/client";
+import { api, speak } from "@/lib/client";
 import { formatWords } from "@/lib/progress";
 import { WordEditor } from "../books/word-editor";
 
@@ -50,6 +50,32 @@ export default function AddBook() {
           {book.band_name && <p className="mt-3 font-bold text-leaf-deep">Level: {book.band_name}</p>}
         </div>
 
+        {book.vocab && book.vocab.length > 0 && (
+          <div className="card space-y-3">
+            <h2 className="text-xl font-black">✨ Tricky words from this book</h2>
+            <p className="text-muted">You&apos;ll write a sentence with each one at the end of the quiz.</p>
+            <ul className="space-y-2">
+              {book.vocab.map((v) => (
+                <li key={v.word} className="flex items-start gap-3 rounded-2xl bg-paper p-3">
+                  <button
+                    type="button"
+                    aria-label={`Hear ${v.word}`}
+                    className="btn-ghost min-h-10 shrink-0 px-3 text-base"
+                    onClick={() => speak(`${v.word}. ${v.meaning}. For example: ${v.example}`)}
+                  >
+                    🔊
+                  </button>
+                  <div>
+                    <p className="text-lg font-black">{v.word}</p>
+                    <p>{v.meaning}</p>
+                    <p className="text-sm italic text-muted">“{v.example}”</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <div className="card space-y-2">
           <p className="text-sm text-muted">
             <strong>For grown-ups:</strong> {book.word_notes}{" "}
@@ -86,7 +112,7 @@ export default function AddBook() {
       </label>
       {error && <p className="rounded-2xl bg-berry/10 p-3 font-bold text-berry">{error}</p>}
       <button className="btn-primary w-full" disabled={busy || !title.trim()}>
-        {busy ? "Counting the words… 🔍" : "Add my book ➕"}
+        {busy ? "Counting the words and finding tricky ones… 🔍" : "Add my book ➕"}
       </button>
     </form>
   );

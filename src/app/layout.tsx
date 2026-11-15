@@ -28,11 +28,19 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <Link href="/" className="mr-auto text-xl font-black tracking-tight">
               🚀 Reading Rocket
             </Link>
-            {links.slice(1).map((l) => (
-              <Link key={l.href} href={l.href} className="rounded-xl px-3 py-2 font-bold text-muted hover:bg-card hover:text-ink">
-                {l.label}
-              </Link>
-            ))}
+            {links.map((l) =>
+              l.href === "/" ? (
+                // Plain link so Home always reloads fresh totals
+                // eslint-disable-next-line @next/next/no-html-link-for-pages
+                <a key={l.href} href="/" className="rounded-xl px-3 py-2 font-bold text-muted hover:bg-card hover:text-ink">
+                  {l.label}
+                </a>
+              ) : (
+                <Link key={l.href} href={l.href} className="rounded-xl px-3 py-2 font-bold text-muted hover:bg-card hover:text-ink">
+                  {l.label}
+                </Link>
+              ),
+            )}
           </nav>
         </header>
         <main className="mx-auto max-w-3xl px-4 py-6">{children}</main>

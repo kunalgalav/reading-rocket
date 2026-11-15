@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import type { BookRow } from "@/lib/db";
-import { api, getParentPin } from "@/lib/client";
+import { api } from "@/lib/client";
 
-/** Parent-only control to correct the estimated word count. Needs the PIN entered on the Grown-ups page. */
+/** Parent-only control to correct the estimated word count. Needs the parent to be logged in on the Grown-ups page. */
 export function WordEditor({ book, onSaved }: { book: BookRow; onSaved: (b: BookRow) => void }) {
   const [open, setOpen] = useState(false);
   const [words, setWords] = useState(String(book.words));
@@ -20,11 +20,9 @@ export function WordEditor({ book, onSaved }: { book: BookRow; onSaved: (b: Book
 
   async function save() {
     setError("");
-    if (!getParentPin()) return setError("Enter the parent PIN on the Grown-ups page first.");
     try {
       const { book: saved } = await api<{ book: BookRow }>(`/api/books/${book.id}`, {
         method: "PATCH",
-        parent: true,
         json: { words: Number(words) },
       });
       onSaved(saved);

@@ -5,7 +5,7 @@ import { use, useCallback, useEffect, useState } from "react";
 import type { BookRow } from "@/lib/db";
 import type { PublicQuestion } from "@/lib/service";
 import { api, speak } from "@/lib/client";
-import { formatWords } from "@/lib/progress";
+import { formatWords, SENTENCE_LEVEL_LABELS, type SentenceLevel } from "@/lib/progress";
 
 interface QuizStart {
   book: BookRow;
@@ -17,7 +17,18 @@ interface QuizResult {
   correct: number;
   total: number;
   multiplier: number;
-  results: { id: number; correct: boolean; feedback: string }[];
+  vocabPoints: number;
+  results: {
+    id: number;
+    kind: "multiple_choice" | "free_text" | "sentence";
+    correct: boolean;
+    feedback: string;
+    word?: string;
+    sentence?: string;
+    level?: SentenceLevel;
+    used_word_correctly?: boolean;
+    points?: number;
+  }[];
   book: BookRow;
   canRetry: boolean;
 }
@@ -82,6 +93,7 @@ export default function QuizPage({ params }: { params: Promise<{ bookId: string 
   const q = quiz.questions[index];
   const answer = answers[index];
   const answered = q.kind === "multiple_choice" ? answer !== null : typeof answer === "string" && answer.trim().length > 0;
+  const isSentence = q.kind === "sentence";
   const setAnswer = (value: Answer) => setAnswers((all) => all.map((a, i) => (i === index ? value : a)));
   const isLast = index === quiz.questions.length - 1;
 
@@ -106,7 +118,13 @@ export default function QuizPage({ params }: { params: Promise<{ bookId: string 
             type="button"
             aria-label="Read the question aloud"
             className="btn-ghost min-h-12 shrink-0 px-4"
-            onClick={() => speak([q.question, ...q.options.map((o, i) => `${String.fromCharCode(65 + i)}: ${o}`)].join(". "))}
+            onClick={() =>
+              speak(
+                isSentence
+                  ? `${q.question} ${q.word} means ${q.meaning}.`
+                  : [q.question, ...q.options.map((o, i) => `${String.fromCharCode(65 + i)}: ${o}`)].join(". "),
+              )
+            }
           >
             🔊
           </button>
@@ -130,7 +148,17 @@ export default function QuizPage({ params }: { params: Promise<{ bookId: string 
           </div>
         ) : (
           <label className="block">
-            <span className="text-muted">Write your answer. Spelling doesn&apos;t matter! A grown-up can help you type.</span>
+            {isSentence && (
+              <span className="mb-3 block rounded-2xl bg-sun/15 p-4">
+                <span className="block text-3xl font-black text-sun-deep">{q.word}</span>
+                <span className="block text-lg">means: {q.meaning}</span>
+              </span>
+            )}
+            <span className="text-muted">
+              {isSentence
+                ? "Try to use capital letters, full stops and joining words like because, when or but. Spelling doesn't matter!"
+                : "Write your answer. Spelling doesn't matter! A grown-up can help you type."}
+            </span>
             <textarea
               className="field mt-2 min-h-32"
               value={typeof answer === "string" ? answer : ""}
@@ -146,7 +174,12 @@ export default function QuizPage({ params }: { params: Promise<{ bookId: string 
           ⬅️
         </button>
         {isLast ? (
-          <button type="button" className="btn-primary flex-1" disabled={answers.some((a) => a === null || a === "")} onClick={submit}>
+          <button
+            type="button"
+            className="btn-primary flex-1"
+            disabled={answers.some((a) => a === null || (typeof a === "string" && !a.trim()))}
+            onClick={submit}
+          >
             ✅ Finish the quiz
           </button>
         ) : (
@@ -161,6 +194,7 @@ export default function QuizPage({ params }: { params: Promise<{ bookId: string 
 
 function Results({ quiz, result, onRetry }: { quiz: QuizStart; result: QuizResult; onRetry: () => void }) {
   const credited = result.book.credited_words ?? 0;
+  const sentenceResults = result.results.filter((r) => r.kind === "sentence");
   const mood = result.multiplier === 1 ? "🏆" : result.multiplier > 0 ? "👍" : "💪";
   const message =
     result.multiplier === 1
@@ -183,9 +217,26 @@ function Results({ quiz, result, onRetry }: { quiz: QuizStart; result: QuizResul
         </p>
       </div>
 
+      {sentenceResults.length > 0 && (
+        <div className="card space-y-3 bg-gradient-to-br from-leaf/15 to-card">
+          <h2 className="text-xl font-black">✏️ Your sentences: +{result.vocabPoints} reading points</h2>
+          {sentenceResults.map((r) => (
+            <div key={r.id} className="rounded-2xl bg-card p-3">
+              <p className="text-lg">
+                <strong className="text-sun-deep">{r.word}</strong>: “{r.sentence}”
+              </p>
+              <p className="font-bold text-leaf-deep">
+                {r.used_word_correctly ? SENTENCE_LEVEL_LABELS[r.level ?? "not_yet"] : "Not quite the right meaning yet"} · +{r.points ?? 0}
+              </p>
+              <p className="text-muted">{r.feedback}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
       <ol className="space-y-2">
-        {quiz.questions.map((q, i) => {
-          const r = result.results[i];
+        {quiz.questions.filter((q) => q.kind !== "sentence").map((q) => {
+          const r = result.results.find((x) => x.id === q.id)!;
           return (
             <li key={q.id} className={`card p-4 ${r.correct ? "border-leaf/50" : "border-berry/40"}`}>
               <p className="font-bold">
@@ -203,9 +254,11 @@ function Results({ quiz, result, onRetry }: { quiz: QuizStart; result: QuizResul
             🔁 Try a new quiz
           </button>
         )}
-        <Link href="/" className="btn-primary flex-1">
+        {/* Plain link so Home reloads with fresh totals */}
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+        <a href="/" className="btn-primary flex-1">
           🏠 See my total
-        </Link>
+        </a>
       </div>
     </div>
   );

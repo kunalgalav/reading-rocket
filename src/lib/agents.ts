@@ -160,6 +160,72 @@ export async function generateQuiz(book: { title: string; author: string | null;
   return quiz.questions.map((q, i) => ({ ...q, id: i + 1 }));
 }
 
+// ---------- 4. Tricky words + sentence judging (Sonnet) ----------
+
+const Vocabulary = z.object({
+  words: z
+    .array(
+      z.object({
+        word: z.string().describe("the word as it appears in the book, lower case unless a proper noun"),
+        meaning: z.string().describe("a child-friendly meaning in under 12 simple words"),
+        example: z.string().describe("a short simple sentence showing how the word is used, ideally from the story"),
+      }),
+    )
+    .describe("exactly 3 words"),
+});
+
+export async function pickVocabulary(book: { title: string; author: string | null; band_name: string | null }) {
+  const out = await sonnet(
+    Vocabulary,
+    "You are a UK primary teacher choosing vocabulary to teach a 7-year-old (Year 2/3) from a book he has read. " +
+      "Pick ambitious but useful words (National Curriculum: 'discussing word meanings, linking new meanings to " +
+      "those already known'). Choose words that genuinely appear in this book, that he probably doesn't use yet, " +
+      "and that he could use in his own sentences. Avoid made-up words, names, rude words and very rare words.",
+    `Book: "${book.title}" by ${book.author || "unknown author"} (level: ${book.band_name ?? "unknown"}).\n` +
+      "Choose exactly 3 tricky words from this book.",
+    "low",
+  );
+  const words = out.words.slice(0, 3);
+  if (words.length !== 3) throw new AgentError("Couldn't pick 3 tricky words.");
+  return words;
+}
+
+export const SentenceJudgement = z.object({
+  results: z.array(
+    z.object({
+      word: z.string(),
+      used_word_correctly: z.boolean().describe("true if the word is used with a sensible meaning (spelling may be off)"),
+      level: z.enum(["not_yet", "year1", "year2", "year3", "year4_plus"]),
+      strengths: z.string().describe("one short, specific, kind sentence to the child about what he did well"),
+      next_step: z.string().describe("one short tip for next time, written to the child"),
+    }),
+  ),
+});
+export type SentenceJudgement = z.infer<typeof SentenceJudgement>["results"][number];
+
+export async function judgeSentences(items: { word: string; meaning: string; sentence: string }[]) {
+  if (!items.length) return [];
+  const out = await sonnet(
+    SentenceJudgement,
+    "You assess a 7-year-old's sentences against the National Curriculum in England writing expectations " +
+      "(English programmes of study and Appendix 2: vocabulary, grammar and punctuation).\n" +
+      "Levels:\n" +
+      "- not_yet: not a sentence, blank, or doesn't make sense.\n" +
+      "- year1: simple sentence joined with 'and'; may lack capital letter or full stop.\n" +
+      "- year2: capital letter and full stop; may use expanded noun phrases (e.g. 'the huge, hungry fox'), " +
+      "subordination with when/if/that/because, or co-ordination with or/and/but.\n" +
+      "- year3: wider range of conjunctions (while, before, after, so, although), prepositions or adverbs " +
+      "for time and cause, inverted commas for speech, or a clear, precise vocabulary choice.\n" +
+      "- year4_plus: fronted adverbials with a comma, well-chosen nouns/pronouns for clarity, multi-clause " +
+      "sentences that read fluently.\n" +
+      "Judge grammar, punctuation and vocabulary choice; ignore spelling mistakes except in the target word's " +
+      "meaning. Be warm and encouraging; he is 7.",
+    items.map((i) => `Word: ${i.word} (means: ${i.meaning})\nHis sentence: ${i.sentence || "(blank)"}`).join("\n\n"),
+    "low",
+  );
+  return out.results;
+}
+
 const Marking = z.object({
   results: z.array(z.object({ id: z.number().int(), correct: z.boolean(), feedback: z.string() })),
 });

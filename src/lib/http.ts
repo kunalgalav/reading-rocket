@@ -3,6 +3,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import { AgentError } from "./agents";
 import { DbConfigError } from "./db";
+import { EmailError } from "./email";
+import { ParentError } from "./parent";
 import { QuizError } from "./service";
 
 /** Turn thrown errors into kid-safe JSON responses, keeping details in the server log. */
@@ -10,6 +12,9 @@ export function errorResponse(err: unknown) {
   if (err instanceof DbConfigError) {
     console.error(err.message);
     return NextResponse.json({ error: err.message }, { status: 503 });
+  }
+  if (err instanceof ParentError || err instanceof EmailError) {
+    return NextResponse.json({ error: err.message }, { status: 400 });
   }
   if (err instanceof QuizError) return NextResponse.json({ error: err.message }, { status: 400 });
   if (err instanceof AgentError) return NextResponse.json({ error: err.message }, { status: 502 });
@@ -33,4 +38,5 @@ export function errorResponse(err: unknown) {
   return NextResponse.json({ error: "Something went wrong." }, { status: 500 });
 }
 
-export const parentOnly = () => NextResponse.json({ error: "Parent PIN required" }, { status: 403 });
+export const parentOnly = () =>
+  NextResponse.json({ error: "Grown-ups only: log in on the Grown-ups page first." }, { status: 403 });

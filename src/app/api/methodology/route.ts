@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isParent } from "@/lib/auth";
+import { isParent } from "@/lib/parent";
 import { errorResponse, parentOnly } from "@/lib/http";
 import { latestRubric, regenerateRubric } from "@/lib/service";
 
@@ -13,8 +13,8 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
-  if (!isParent(request)) return parentOnly();
+export async function POST() {
+  if (!(await isParent())) return parentOnly();
   try {
     return NextResponse.json({ rubric: await regenerateRubric() });
   } catch (err) {

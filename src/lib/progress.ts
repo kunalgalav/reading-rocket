@@ -81,4 +81,33 @@ export function creditMultiplier(correct: number, total = 10): number {
 
 export const MAX_QUIZ_ATTEMPTS = 2; // first try + one retry
 
+/**
+ * Sentence-writing levels, aligned to the National Curriculum in England writing expectations
+ * (composition, vocabulary, grammar and punctuation, English Appendix 2).
+ */
+export const SENTENCE_LEVELS = ["not_yet", "year1", "year2", "year3", "year4_plus"] as const;
+export type SentenceLevel = (typeof SENTENCE_LEVELS)[number];
+
+export const SENTENCE_LEVEL_LABELS: Record<SentenceLevel, string> = {
+  not_yet: "Keep practising",
+  year1: "Year 1 level",
+  year2: "Year 2 level",
+  year3: "Year 3 level",
+  year4_plus: "Year 4+ level",
+};
+
+/** Bonus reading points per sentence. Never affects word credit. Max 2 per sentence, 6 per quiz. */
+export function sentencePoints(level: SentenceLevel, usedWordCorrectly: boolean): number {
+  if (!usedWordCorrectly) return 0;
+  return { not_yet: 0, year1: 0.5, year2: 1, year3: 1.5, year4_plus: 2 }[level];
+}
+
+/** Monday..Sunday range (inclusive) of the week containing `date`. */
+export function weekRange(date: Date): { start: string; end: string } {
+  const start = startOfWeek(date);
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 6);
+  return { start: toDay(start), end: toDay(end) };
+}
+
 export const formatWords = (n: number) => n.toLocaleString("en-GB");

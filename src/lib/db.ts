@@ -41,6 +41,27 @@ const SCHEMA = [
      multiplier REAL,
      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
    )`,
+  // v2: tricky words per book + sentence points
+  `ALTER TABLE books ADD COLUMN IF NOT EXISTS vocab JSONB`,
+  `ALTER TABLE books ADD COLUMN IF NOT EXISTS vocab_points REAL`,
+  `ALTER TABLE quiz_attempts ADD COLUMN IF NOT EXISTS vocab_points REAL`,
+  // v2: single parent account, sessions, weekly email log
+  `CREATE TABLE IF NOT EXISTS parent (
+     id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+     email TEXT NOT NULL,
+     password_hash TEXT NOT NULL,
+     weekly_email BOOLEAN NOT NULL DEFAULT true,
+     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+   )`,
+  `CREATE TABLE IF NOT EXISTS parent_sessions (
+     token_hash TEXT PRIMARY KEY,
+     expires_at TIMESTAMPTZ NOT NULL
+   )`,
+  `CREATE TABLE IF NOT EXISTS email_log (
+     week_start TEXT PRIMARY KEY,
+     sent_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+     email_id TEXT
+   )`,
 ];
 
 /**
@@ -115,4 +136,12 @@ export interface BookRow {
   level_delta: number | null;
   credited_words: number | null;
   score_awarded: number | null;
+  vocab: VocabWord[] | null;
+  vocab_points: number | null;
+}
+
+export interface VocabWord {
+  word: string;
+  meaning: string; // child-friendly definition
+  example: string; // how the book (or a simple sentence) uses it
 }
