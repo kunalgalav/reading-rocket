@@ -13,7 +13,7 @@ export async function GET() {
       exists: Boolean(parent),
       loggedIn,
       parent: loggedIn ? parent : null,
-      emailConfigured: Boolean(process.env.RESEND_API_KEY),
+      emailConfigured: Boolean(process.env.COMMS_API_KEY),
     });
   } catch (err) {
     return errorResponse(err);

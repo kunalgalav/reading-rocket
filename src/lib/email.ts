@@ -1,5 +1,5 @@
 import "server-only";
-import { Resend } from "resend";
+import { CommsError, createComms } from "./comms";
 import { getDb, type BookRow } from "./db";
 import { getParent } from "./parent";
 import { formatWords, milestoneProgress, parseDay, SENTENCE_LEVEL_LABELS, summarize, weekRange, type SentenceLevel } from "./progress";
@@ -131,8 +131,8 @@ export function siteUrl(): string {
 
 /** Build and send the weekly email to the parent. `force` skips the once-per-week guard (test sends). */
 export async function sendWeeklyEmail({ force = false, today = new Date() } = {}) {
-  const key = process.env.RESEND_API_KEY;
-  if (!key) throw new EmailError("RESEND_API_KEY isn't set, so emails can't be sent yet.");
+  const apiKey = process.env.COMMS_API_KEY;
+  if (!apiKey) throw new EmailError("COMMS_API_KEY isn't set, so emails can't be sent yet.");
   const parent = await getParent();
   if (!parent) throw new EmailError("No parent account yet. Sign up on the Grown-ups page.");
   if (!force && !parent.weekly_email) return { skipped: "Weekly emails are turned off." };
@@ -145,20 +145,27 @@ export async function sendWeeklyEmail({ force = false, today = new Date() } = {}
   }
 
   const { subject, html, text } = renderWeeklyEmail(summary, siteUrl());
-  const resend = new Resend(key);
-  const { data, error } = await resend.emails.send({
-    from: process.env.EMAIL_FROM ?? "Reading Rocket <onboarding@resend.dev>",
-    to: parent.email,
-    subject: force ? `[Test] ${subject}` : subject,
-    html,
-    text,
-  });
-  if (error) throw new EmailError(`Resend couldn't send the email: ${error.message}`);
+  let message;
+  try {
+    message = await createComms({ apiKey }).send({
+      channel: "email",
+      to: parent.email,
+      subject: force ? `[Test] ${subject}` : subject,
+      body: text,
+      html,
+      metadata: { app: "reading-rocket", kind: "weekly-summary", week_start: summary.range.start },
+      // Test sends are unique per click; real weekly sends are deduplicated per week.
+      idempotency_key: force ? `weekly-test-${Date.now()}` : `weekly-${summary.range.start}`,
+    });
+  } catch (err) {
+    const reason = err instanceof CommsError ? err.message : String(err);
+    throw new EmailError(`The messaging service couldn't send the email: ${reason}`);
+  }
   if (!force) {
     await db.query("INSERT INTO email_log (week_start, email_id) VALUES ($1, $2) ON CONFLICT (week_start) DO NOTHING", [
       summary.range.start,
-      data?.id ?? null,
+      message.id,
     ]);
   }
-  return { sent: true, to: parent.email, id: data?.id };
+  return { sent: true, to: parent.email, id: message.id };
 }

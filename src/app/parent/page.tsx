@@ -165,7 +165,7 @@ function Account({ status, onChange }: { status: Status; onChange: () => void })
 
       {!status.emailConfigured && (
         <p className="rounded-2xl bg-sun/15 p-3 text-sm">
-          ⚠️ Emails can&apos;t be sent yet: add <code>RESEND_API_KEY</code> in Vercel → Settings → Environment Variables, then redeploy.
+          ⚠️ Emails can&apos;t be sent yet: add <code>COMMS_API_KEY</code> in Vercel → Settings → Environment Variables, then redeploy.
         </p>
       )}
 

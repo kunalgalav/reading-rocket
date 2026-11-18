@@ -36,7 +36,7 @@ npm run lint && npm run typecheck && npm run build
 2. Add **Storage → Neon Postgres** to the project (this sets `DATABASE_URL`). Tables are created automatically.
 3. Set `ANTHROPIC_API_KEY`, `FAMILY_PASSCODE` and `PARENT_PIN`. In production the site won't run without a passcode.
 4. On the Grown-ups page, create the parent account (email + password, using `PARENT_PIN` once to prove it's you). Grown-up actions need this login.
-5. Weekly emails: set `RESEND_API_KEY` and `CRON_SECRET` (see `.env.example`). `vercel.json` schedules the email for Sundays 18:00 UTC. Use "Send me this week's summary now" on the Grown-ups page to test.
+5. Weekly emails: set `COMMS_API_KEY` (from the messaging service) and `CRON_SECRET` (see `.env.example`). `vercel.json` schedules the email for Sundays 18:00 UTC. Use "Send me this week's summary now" on the Grown-ups page to test.
 
 Health check: `/api/health` shows which settings and the database are in place (no secret values).
 
@@ -45,7 +45,7 @@ Health check: `/api/health` shows which settings and the database are in place (
 - `src/lib/progress.ts`: pure logic (totals, milestones, credit rule), with tests in `progress.test.ts`
 - `src/lib/agents.ts`: the Claude calls (structured JSON output via Zod)
 - `src/lib/parent.ts`: parent account (scrypt-hashed password, session cookie)
-- `src/lib/email.ts`: weekly summary, email template, sending via Resend
+- `src/lib/email.ts`: weekly summary, email template, sending via the messaging service (`src/lib/comms.ts`, downloaded client, don't edit)
 - `src/lib/service.ts`: book, quiz and methodology flows on top of the database
 - `src/lib/db.ts`: SQL layer (Neon in production, PGlite locally) and the schema
 - `src/app/api/*`: route handlers; `src/middleware.ts`: passcode gate
