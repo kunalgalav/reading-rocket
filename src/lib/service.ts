@@ -11,7 +11,17 @@ import {
   type QuizQuestion,
 } from "./agents";
 import { getDb, type BookRow, type VocabWord } from "./db";
-import { creditMultiplier, MAX_QUIZ_ATTEMPTS, milestoneProgress, sentencePoints, summarize, toDay, type SentenceLevel } from "./progress";
+import { notifyTelegram } from "./notify";
+import {
+  creditMultiplier,
+  MAX_QUIZ_ATTEMPTS,
+  milestoneProgress,
+  newMilestones,
+  sentencePoints,
+  summarize,
+  toDay,
+  type SentenceLevel,
+} from "./progress";
 
 // ---------- Methodology ----------
 
@@ -58,6 +68,12 @@ export async function addBook(input: { title: string; author: string | null; fin
   const [level, vocab] = await Promise.allSettled([scoreLevel(book), ensureVocab(book)]);
   if (level.status === "rejected") console.error("Level assessment failed", level.reason);
   if (vocab.status === "rejected") console.error("Picking tricky words failed", vocab.reason);
+  const by = book.author ? ` by ${book.author}` : "";
+  await notifyTelegram(
+    `📚 Finished "${book.title}"${by} (about ${book.words.toLocaleString("en-GB")} words). Quiz next!`,
+    `book-${book.id}`,
+    { kind: "book-finished", book_id: book.id },
+  );
   return (await getBook(book.id)) ?? book;
 }
 
@@ -281,6 +297,9 @@ export async function submitQuiz(attemptId: number, answers: (number | string | 
     [attemptId, JSON.stringify(answers), JSON.stringify(results), correct, multiplier, vocabPoints],
   );
 
+  const today = new Date();
+  const yearBefore = summarize(await listBooks(), today).year;
+
   // The book keeps its best attempt for each kind of score.
   const [best] = await db.query<{ multiplier: number; vocab_points: number }>(
     "SELECT MAX(multiplier) AS multiplier, MAX(vocab_points) AS vocab_points FROM quiz_attempts WHERE book_id = $1",
@@ -291,6 +310,15 @@ export async function submitQuiz(attemptId: number, answers: (number | string | 
     "UPDATE books SET credited_words = $2, score_awarded = $3, vocab_points = $4 WHERE id = $1 RETURNING *",
     [book.id, Math.round(book.words * bestMultiplier), (book.level_delta ?? 0) * bestMultiplier, Number(best.vocab_points ?? 0)],
   );
+
+  const yearAfter = summarize(await listBooks(), today).year;
+  for (const m of newMilestones(yearBefore, yearAfter)) {
+    await notifyTelegram(
+      `🚀 Milestone! ${m.toLocaleString("en-GB")} words read this year (now ${yearAfter.toLocaleString("en-GB")}), reached with "${book.title}".`,
+      `milestone-${today.getUTCFullYear()}-${m}`,
+      { kind: "milestone", milestone: m, book_id: book.id },
+    );
+  }
 
   return {
     correct,

@@ -40,6 +40,14 @@ npm run lint && npm run typecheck && npm run build
 
 Health check: `/api/health` shows which settings and the database are in place (no secret values).
 
+## Deploy (AWS Amplify, reading.kunalgalav.com)
+
+Same code, same Neon database. `amplify.yml` builds it: the Amplify service role reads the JSON secret `reading-rocket/prod` (all the settings above plus `SITE_URL`) and `scripts/write-env.mjs` writes it to `.env.production`. An EventBridge rule calls `/api/cron/weekly` on Sundays at 18:00 UTC with the `CRON_SECRET` header.
+
+## Notifications
+
+Everything goes through the messaging service (`COMMS_API_KEY`): the weekly summary by email **and** Telegram, plus Telegram pings when a book is finished or a word milestone is reached (`src/lib/notify.ts`). Telegram is best-effort and never blocks the app; without `COMMS_API_KEY` (local dev) nothing is sent.
+
 ## Layout
 
 - `src/lib/progress.ts`: pure logic (totals, milestones, credit rule), with tests in `progress.test.ts`

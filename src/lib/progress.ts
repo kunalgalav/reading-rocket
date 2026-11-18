@@ -72,6 +72,11 @@ export function milestoneProgress(total: number): MilestoneProgress {
 }
 
 /** Quiz score → share of the book's words credited. <5 none, 5–7 half, 8+ full (out of 10). */
+/** Milestones crossed when the yearly total went from `before` to `after` (empty if none). */
+export function newMilestones(before: number, after: number): number[] {
+  return MILESTONES.filter((m) => before < m && after >= m);
+}
+
 export function creditMultiplier(correct: number, total = 10): number {
   const outOfTen = (correct / total) * 10;
   if (outOfTen >= 8) return 1;

@@ -1,0 +1,22 @@
+# AWS Amplify Hosting build (reading.kunalgalav.com). Vercel ignores this file.
+# Secrets live in Secrets Manager as one JSON secret, reading-rocket/prod; the Amplify
+# service role may read only that. They're written to .env.production for the server.
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - nvm install 22 && nvm use 22
+        - npm ci
+    build:
+      commands:
+        - aws secretsmanager get-secret-value --region us-east-1 --secret-id reading-rocket/prod --query SecretString --output text | node scripts/write-env.mjs
+        - npm run build
+  artifacts:
+    baseDirectory: .next
+    files:
+      - "**/*"
+  cache:
+    paths:
+      - node_modules/**/*
+      - .next/cache/**/*

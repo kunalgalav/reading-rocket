@@ -80,17 +80,28 @@ export function databaseUrl(): string | undefined {
 
 export class DbConfigError extends Error {}
 
+/**
+ * The embedded database is only for local development. In production (Vercel, AWS) a missing
+ * connection string must be an error: falling back would show an empty app as if the data were gone.
+ * Set PGLITE_DIR to run a production build against the embedded database on purpose.
+ */
+function embeddedAllowed(): boolean {
+  if (process.env.VERCEL) return false;
+  return process.env.NODE_ENV !== "production" || Boolean(process.env.PGLITE_DIR);
+}
+
 export function dbDriver(): "neon" | "pglite" | "missing" {
   if (databaseUrl()) return "neon";
-  return process.env.VERCEL ? "missing" : "pglite";
+  return embeddedAllowed() ? "pglite" : "missing";
 }
 
 async function connect(): Promise<Db> {
   let db: Db;
   const url = databaseUrl();
-  if (!url && process.env.VERCEL) {
-    // Vercel's filesystem is read-only, so the embedded database can't work there.
-    throw new DbConfigError("No database connected. In Vercel, connect a Neon database under Storage, then redeploy.");
+  if (!url && !embeddedAllowed()) {
+    throw new DbConfigError(
+      "No database connected. Set DATABASE_URL to the Neon connection string (Vercel: Storage; AWS: the reading-rocket/prod secret), then redeploy.",
+    );
   }
   if (url) {
     const { neon } = await import("@neondatabase/serverless");

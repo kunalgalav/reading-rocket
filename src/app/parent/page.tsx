@@ -174,8 +174,9 @@ function Account({ status, onChange }: { status: Status; onChange: () => void })
         disabled={busy !== "" || !status.emailConfigured}
         onClick={() =>
           run("test", async () => {
-            const r = await api<{ to: string }>("/api/parent/test-email", { method: "POST" });
-            return `Test email sent to ${r.to}. Check your inbox (and spam folder).`;
+            const r = await api<{ to: string; telegram?: boolean }>("/api/parent/test-email", { method: "POST" });
+            const tg = r.telegram ? " Also sent to Telegram." : " (Telegram copy wasn't sent.)";
+            return `Test email sent to ${r.to}. Check your inbox (and spam folder).${tg}`;
           })
         }
       >

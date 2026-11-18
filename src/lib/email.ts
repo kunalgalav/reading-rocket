@@ -1,5 +1,6 @@
 import "server-only";
 import { CommsError, createComms } from "./comms";
+import { notifyTelegram } from "./notify";
 import { getDb, type BookRow } from "./db";
 import { getParent } from "./parent";
 import { formatWords, milestoneProgress, parseDay, SENTENCE_LEVEL_LABELS, summarize, weekRange, type SentenceLevel } from "./progress";
@@ -161,11 +162,17 @@ export async function sendWeeklyEmail({ force = false, today = new Date() } = {}
     const reason = err instanceof CommsError ? err.message : String(err);
     throw new EmailError(`The messaging service couldn't send the email: ${reason}`);
   }
+  // Telegram copy of the summary: best-effort, the email still counts if it fails.
+  const telegram = await notifyTelegram(
+    `${force ? "[Test] " : ""}📖 ${subject}\n\n${text}`,
+    force ? `weekly-tg-test-${Date.now()}` : `weekly-tg-${summary.range.start}`,
+    { kind: "weekly-summary", week_start: summary.range.start },
+  );
   if (!force) {
     await db.query("INSERT INTO email_log (week_start, email_id) VALUES ($1, $2) ON CONFLICT (week_start) DO NOTHING", [
       summary.range.start,
       message.id,
     ]);
   }
-  return { sent: true, to: parent.email, id: message.id };
+  return { sent: true, to: parent.email, id: message.id, telegram };
 }

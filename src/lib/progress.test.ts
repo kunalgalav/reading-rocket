@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { creditMultiplier, milestoneProgress, parseDay, sentencePoints, startOfWeek, summarize, toDay, weekRange } from "./progress";
+import { creditMultiplier, milestoneProgress, newMilestones, parseDay, sentencePoints, startOfWeek, summarize, toDay, weekRange } from "./progress";
 
 describe("startOfWeek", () => {
   it("returns Monday for any day of the week", () => {
@@ -58,5 +58,14 @@ describe("creditMultiplier", () => {
     expect(creditMultiplier(7)).toBe(0.5);
     expect(creditMultiplier(8)).toBe(1);
     expect(creditMultiplier(10)).toBe(1);
+  });
+});
+
+describe("newMilestones", () => {
+  it("returns only milestones crossed by this change", () => {
+    expect(newMilestones(900, 1200)).toEqual([1000]);
+    expect(newMilestones(900, 12_000)).toEqual([1000, 10_000]);
+    expect(newMilestones(1000, 5000)).toEqual([]);
+    expect(newMilestones(5000, 5000)).toEqual([]);
   });
 });
