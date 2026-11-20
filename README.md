@@ -30,19 +30,21 @@ npm test         # unit tests: totals, milestones, quiz credit
 npm run lint && npm run typecheck && npm run build
 ```
 
-## Deploy (Vercel)
+## Deploy (Vercel, being retired)
+
+The old copy at reading-rocket-five.vercel.app uses the same database. Its weekly schedule was removed on 2026-11-20 (AWS sends it now).
 
 1. Push this repo to GitHub and import it in Vercel.
 2. Add **Storage → Neon Postgres** to the project (this sets `DATABASE_URL`). Tables are created automatically.
 3. Set `ANTHROPIC_API_KEY`, `FAMILY_PASSCODE` and `PARENT_PIN`. In production the site won't run without a passcode.
 4. On the Grown-ups page, create the parent account (email + password, using `PARENT_PIN` once to prove it's you). Grown-up actions need this login.
-5. Weekly emails: set `COMMS_API_KEY` (from the messaging service) and `CRON_SECRET` (see `.env.example`). `vercel.json` schedules the email for Sundays 18:00 UTC. Use "Send me this week's summary now" on the Grown-ups page to test.
+5. Weekly emails: set `COMMS_API_KEY` (from the messaging service) and `CRON_SECRET` (see `.env.example`). Use "Send me this week's summary now" on the Grown-ups page to test.
 
 Health check: `/api/health` shows which settings and the database are in place (no secret values).
 
-## Deploy (AWS Amplify, reading.kunalgalav.com)
+## Deploy (AWS Amplify, reading.kunalgalav.com: the live site)
 
-Same code, same Neon database. `amplify.yml` builds it: the Amplify service role reads the JSON secret `reading-rocket/prod` (all the settings above plus `SITE_URL`) and `scripts/write-env.mjs` writes it to `.env.production`. An EventBridge rule calls `/api/cron/weekly` on Sundays at 18:00 UTC with the `CRON_SECRET` header.
+Same code, same Neon database. Every push to `master` deploys (Amplify app `reading-rocket`, us-east-1). `amplify.yml` builds it: the Amplify service role reads the JSON secret `reading-rocket/prod` (all the settings above plus `SITE_URL`) and `scripts/write-env.mjs` writes it to `.env.production`. An EventBridge rule calls `/api/cron/weekly` on Sundays at 18:00 UTC with the `CRON_SECRET` header (rule `reading-rocket-prod-weekly`). Server logs: CloudWatch `/aws/amplify/<app id>`.
 
 ## Notifications
 

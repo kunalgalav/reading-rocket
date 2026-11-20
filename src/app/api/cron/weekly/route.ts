@@ -6,8 +6,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * Called by Vercel Cron every Sunday evening (see vercel.json). Vercel sends
- * `Authorization: Bearer $CRON_SECRET`, so only the scheduler can trigger it.
+ * Called every Sunday at 18:00 UTC by the EventBridge rule reading-rocket-prod-weekly,
+ * which sends `Authorization: Bearer $CRON_SECRET`, so only the scheduler can trigger it.
  */
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET;
