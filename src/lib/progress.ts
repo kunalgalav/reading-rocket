@@ -116,3 +116,52 @@ export function weekRange(date: Date): { start: string; end: string } {
 }
 
 export const formatWords = (n: number) => n.toLocaleString("en-GB");
+
+// ---------- Reading-skill profile (for next-book suggestions) ----------
+
+/** KS1/KS2 reading content domains used by the quiz questions. */
+export const READING_SKILLS = ["retrieval", "vocabulary", "inference", "prediction", "reasoning", "summarising"] as const;
+export type ReadingSkill = (typeof READING_SKILLS)[number];
+
+export interface MarkedAttempt {
+  questions: { id: number; kind: string; skill?: string }[];
+  results: { id: number; kind: string; correct: boolean; level?: SentenceLevel; used_word_correctly?: boolean }[] | null;
+}
+
+export interface SkillProfile {
+  skills: Partial<Record<ReadingSkill, { correct: number; total: number }>>;
+  sentenceLevels: Partial<Record<SentenceLevel, number>>;
+  quizzes: number;
+}
+
+/** Tallies how each comprehension skill went across marked quiz attempts, plus sentence-writing levels. */
+export function skillProfile(attempts: MarkedAttempt[]): SkillProfile {
+  const profile: SkillProfile = { skills: {}, sentenceLevels: {}, quizzes: 0 };
+  for (const a of attempts) {
+    if (!a.results) continue;
+    profile.quizzes++;
+    const skillById = new Map(a.questions.map((q) => [q.id, q.skill]));
+    for (const r of a.results) {
+      if (r.kind === "sentence") {
+        if (r.level && r.used_word_correctly) profile.sentenceLevels[r.level] = (profile.sentenceLevels[r.level] ?? 0) + 1;
+        continue;
+      }
+      const skill = skillById.get(r.id) as ReadingSkill | undefined;
+      if (!skill || !READING_SKILLS.includes(skill)) continue;
+      const s = (profile.skills[skill] ??= { correct: 0, total: 0 });
+      s.total++;
+      if (r.correct) s.correct++;
+    }
+  }
+  return profile;
+}
+
+/** Lower-case, strip punctuation and a leading "the/a/an", so "The Twits" matches "twits". */
+export function normaliseTitle(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, " ")
+    .replace(/^\s*(the|a|an)\s+/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}

@@ -3,6 +3,7 @@ import { CommsError, createComms } from "./comms";
 import { notifyTelegram } from "./notify";
 import { getDb, type BookRow } from "./db";
 import { getParent } from "./parent";
+import { freshSuggestions, KIND_LABEL, latestSuggestions, suggestionsText, type StoredSuggestions } from "./suggestions";
 import { formatWords, milestoneProgress, parseDay, SENTENCE_LEVEL_LABELS, summarize, weekRange, type SentenceLevel } from "./progress";
 
 export class EmailError extends Error {}
@@ -26,9 +27,10 @@ interface WeeklySummary {
   nextMilestone: number | null;
   sentences: SentenceResult[];
   awaitingQuiz: number;
+  suggestions: StoredSuggestions | null;
 }
 
-export async function buildWeeklySummary(today = new Date()): Promise<WeeklySummary> {
+export async function buildWeeklySummary(today = new Date(), suggestions?: StoredSuggestions | null): Promise<WeeklySummary> {
   const db = await getDb();
   const range = weekRange(today);
   const books = await db.query<BookRow>("SELECT * FROM books ORDER BY finished_on, id");
@@ -57,6 +59,7 @@ export async function buildWeeklySummary(today = new Date()): Promise<WeeklySumm
     nextMilestone: milestoneProgress(totals.year).next,
     sentences,
     awaitingQuiz: inWeek.filter((b) => b.credited_words === null).length,
+    suggestions: suggestions === undefined ? await latestSuggestions().catch(() => null) : suggestions,
   };
 }
 
@@ -105,6 +108,7 @@ export function renderWeeklyEmail(s: WeeklySummary, siteUrl: string): { subject:
       ${s.awaitingQuiz ? `<p style="margin:12px 0 0;color:#e07b00">${s.awaitingQuiz} book${s.awaitingQuiz > 1 ? "s are" : " is"} waiting for a quiz: the words count once it's done.</p>` : ""}
     </div>
     ${s.sentences.length ? `<div style="background:#fff;border:2px solid #f0e2cc;border-radius:16px;padding:16px;margin-bottom:16px"><h2 style="margin:0 0 8px;font-size:18px">✏️ New words he used</h2><ul style="margin:0;padding-left:18px">${sentenceRows}</ul></div>` : ""}
+    ${suggestionsHtml(s.suggestions)}
     <div style="background:#fff;border:2px solid #f0e2cc;border-radius:16px;padding:16px;margin-bottom:16px">
       <h2 style="margin:0 0 8px;font-size:18px">🏆 This year so far</h2>
       <p style="margin:0">${formatWords(s.yearWords)} words · ${s.totalPoints} reading points${s.nextMilestone ? `<br><span style="color:#7a6a5a">${formatWords(s.nextMilestone - s.yearWords)} words to the ${formatWords(s.nextMilestone)} milestone</span>` : ""}</p>
@@ -118,11 +122,30 @@ export function renderWeeklyEmail(s: WeeklySummary, siteUrl: string): { subject:
     `${formatWords(s.weekWords)} words, ${s.booksThisWeek.length} books, +${s.pointsThisWeek} reading points this week.`,
     ...s.booksThisWeek.map((b) => `- ${b.title}: ${b.credited_words === null ? "quiz to do" : `${formatWords(b.credited_words)} words`}`),
     ...s.sentences.map((r) => `- ${r.word}: "${r.sentence}" (${SENTENCE_LEVEL_LABELS[r.level]})`),
+    ...(s.suggestions ? ["", "What to read next", suggestionsText(s.suggestions.data), ""] : []),
     `This year: ${formatWords(s.yearWords)} words, ${s.totalPoints} points.`,
     siteUrl,
   ].join("\n");
 
   return { subject, html, text };
+}
+
+function suggestionsHtml(stored: StoredSuggestions | null): string {
+  if (!stored?.data.suggestions.length) return "";
+  const s = stored.data;
+  const books = s.suggestions
+    .map(
+      (b) => `<li style="margin-bottom:10px"><strong>${esc(b.title)}</strong> by ${esc(b.author)}<br><span style="color:#16897f;font-size:13px">${esc(KIND_LABEL[b.kind])} · ${esc(b.band_name)} · about ${formatWords(b.approx_words)} words</span><br><span style="font-size:14px">${esc(b.why)}</span></li>`,
+    )
+    .join("");
+  const focus = s.focus.map((f) => `<li><strong>${esc(f.skill)}</strong>: ${esc(f.why)}</li>`).join("");
+  return `<div style="background:#fff;border:2px solid #f0e2cc;border-radius:16px;padding:16px;margin-bottom:16px">
+      <h2 style="margin:0 0 8px;font-size:18px">📖 What to read next</h2>
+      <p style="margin:0 0 8px"><strong>${esc(s.level.band_name)}</strong>. ${esc(s.level.expectation)}</p>
+      ${focus ? `<p style="margin:0 0 4px;color:#7a6a5a;font-size:13px">Skills to work on</p><ul style="margin:0 0 12px;padding-left:18px">${focus}</ul>` : ""}
+      <ol style="margin:0;padding-left:18px">${books}</ol>
+      <p style="margin:12px 0 0;background:#fff8ec;border-radius:10px;padding:10px">💡 ${esc(s.parent_tip)}</p>
+    </div>`;
 }
 
 export function siteUrl(): string {
@@ -138,7 +161,7 @@ export async function sendWeeklyEmail({ force = false, today = new Date() } = {}
   if (!parent) throw new EmailError("No parent account yet. Sign up on the Grown-ups page.");
   if (!force && !parent.weekly_email) return { skipped: "Weekly emails are turned off." };
 
-  const summary = await buildWeeklySummary(today);
+  const summary = await buildWeeklySummary(today, await freshSuggestions());
   const db = await getDb();
   if (!force) {
     const [already] = await db.query("SELECT 1 FROM email_log WHERE week_start = $1", [summary.range.start]);

@@ -248,3 +248,68 @@ export async function markFreeText(
   );
   return out.results;
 }
+
+// ---------- 5. Next-book suggestions (Sonnet) ----------
+
+export const BookSuggestions = z.object({
+  level: z.object({
+    band_name: z.string().describe("his current band, using the methodology's band names"),
+    expectation: z
+      .string()
+      .describe("one sentence comparing his reading with National Curriculum expectations for his age (Year 2/3)"),
+  }),
+  focus: z
+    .array(
+      z.object({
+        skill: z.string().describe("the KS1/KS2 reading skill, e.g. 'inference' or 'vocabulary'"),
+        why: z.string().describe("one sentence for the parent, based on the quiz evidence"),
+      }),
+    )
+    .describe("1 or 2 skills to work on next"),
+  suggestions: z
+    .array(
+      z.object({
+        title: z.string(),
+        author: z.string(),
+        band_name: z.string(),
+        kind: z.enum(["consolidate", "stretch", "broaden"]),
+        approx_words: z.number().int(),
+        why: z.string().describe("one sentence for the parent: how this book helps, tied to his level or a focus skill"),
+      }),
+    )
+    .describe("exactly 4 books: 2 consolidate, 1 stretch (one band up), 1 broaden (non-fiction, poetry or a new genre)"),
+  parent_tip: z.string().describe("one practical thing to do while reading together this week, aimed at a focus skill"),
+});
+export type BookSuggestions = z.infer<typeof BookSuggestions>;
+
+export async function suggestBooks(input: {
+  rubric: Rubric;
+  recentBooks: { title: string; author: string | null; band_name: string | null; quiz: string }[];
+  profile: unknown;
+  alreadyRead: string[];
+}): Promise<BookSuggestions> {
+  const out = await sonnet(
+    BookSuggestions,
+    "You are a UK primary-school reading specialist advising the parent of a 7-year-old (Year 2/3) in England. " +
+      "You know the National Curriculum in England (English programmes of study, KS1 and lower KS2: word reading " +
+      "and comprehension) and the KS1/KS2 reading content domains (vocabulary, retrieval, summarising, inference, " +
+      "prediction, explaining/reasoning). Recommend books the way a good school librarian would: books that help him " +
+      "progress to the next level while keeping reading enjoyable.\n" +
+      "Rules for books: only suggest real, published books you are certain exist with exactly that title and author, " +
+      "preferring well-known titles that are easy to find in UK libraries and bookshops. Never suggest a book he has " +
+      "already read. Keep content suitable for a 7-year-old.",
+    `Reading methodology (bands tied to the curriculum):\n${JSON.stringify({ bands: input.rubric.bands })}\n\n` +
+      `His recent books, newest first (title, band, best quiz score):\n` +
+      (input.recentBooks.map((b) => `- ${b.title}${b.author ? ` by ${b.author}` : ""} (${b.band_name ?? "unbanded"}; quiz ${b.quiz})`).join("\n") ||
+        "(none)") +
+      `\n\nQuiz evidence across his recent quizzes (correct/total per reading skill, and how many of his sentences ` +
+      `reached each National Curriculum writing level):\n${JSON.stringify(input.profile)}\n\n` +
+      `Books he has already read (do not suggest these):\n${input.alreadyRead.join("; ") || "(none)"}\n\n` +
+      "Work out his current band and the 1-2 reading skills that most need practice (low scores, or too little " +
+      "evidence), then suggest exactly 4 books: 2 'consolidate' at his band that exercise a focus skill, 1 'stretch' " +
+      "one band up, and 1 'broaden' (non-fiction, poetry or a genre he hasn't tried).",
+    "medium",
+  );
+  if (!out.suggestions.length) throw new AgentError("No book suggestions came back.");
+  return out;
+}

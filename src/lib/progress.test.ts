@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { creditMultiplier, milestoneProgress, newMilestones, parseDay, sentencePoints, startOfWeek, summarize, toDay, weekRange } from "./progress";
+import { creditMultiplier, milestoneProgress, newMilestones, normaliseTitle, parseDay, sentencePoints, skillProfile, startOfWeek, summarize, toDay, weekRange } from "./progress";
 
 describe("startOfWeek", () => {
   it("returns Monday for any day of the week", () => {
@@ -67,5 +67,38 @@ describe("newMilestones", () => {
     expect(newMilestones(900, 12_000)).toEqual([1000, 10_000]);
     expect(newMilestones(1000, 5000)).toEqual([]);
     expect(newMilestones(5000, 5000)).toEqual([]);
+  });
+});
+
+describe("skillProfile", () => {
+  it("tallies comprehension skills and sentence levels across attempts", () => {
+    const profile = skillProfile([
+      {
+        questions: [
+          { id: 1, kind: "multiple_choice", skill: "retrieval" },
+          { id: 2, kind: "multiple_choice", skill: "inference" },
+          { id: 3, kind: "free_text", skill: "inference" },
+          { id: 4, kind: "sentence" },
+        ],
+        results: [
+          { id: 1, kind: "multiple_choice", correct: true },
+          { id: 2, kind: "multiple_choice", correct: false },
+          { id: 3, kind: "free_text", correct: true },
+          { id: 4, kind: "sentence", correct: true, level: "year2", used_word_correctly: true },
+        ],
+      },
+      { questions: [{ id: 1, kind: "multiple_choice", skill: "retrieval" }], results: [{ id: 1, kind: "multiple_choice", correct: false }] },
+      { questions: [{ id: 1, kind: "multiple_choice", skill: "retrieval" }], results: null }, // not marked yet
+    ]);
+    expect(profile.quizzes).toBe(2);
+    expect(profile.skills).toEqual({ retrieval: { correct: 1, total: 2 }, inference: { correct: 1, total: 2 } });
+    expect(profile.sentenceLevels).toEqual({ year2: 1 });
+  });
+});
+
+describe("normaliseTitle", () => {
+  it("ignores case, punctuation and a leading article", () => {
+    expect(normaliseTitle("The Twits!")).toBe(normaliseTitle("twits"));
+    expect(normaliseTitle("Charlie & the Chocolate Factory")).toBe("charlie the chocolate factory");
   });
 });

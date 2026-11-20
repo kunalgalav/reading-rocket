@@ -50,6 +50,8 @@ Same code, same Neon database. Every push to `master` deploys (Amplify app `read
 
 Everything goes through the messaging service (`COMMS_API_KEY`): the weekly summary by email **and** Telegram, plus Telegram pings when a book is finished or a word milestone is reached (`src/lib/notify.ts`). Telegram is best-effort and never blocks the app; without `COMMS_API_KEY` (local dev) nothing is sent.
 
+**What to read next:** after each marked quiz, `src/lib/suggestions.ts` asks Sonnet for 4 books (2 at his level, 1 stretch, 1 non-fiction/new genre) based on his recent bands and per-skill quiz results (KS1/KS2 reading content domains), plus 1–2 skills to work on and a tip for reading together. It runs after the quiz response (`after()`), is stored in `book_suggestions`, sent on Telegram, and shown in the weekly email (refreshed first if a newer quiz exists).
+
 ## Layout
 
 - `src/lib/progress.ts`: pure logic (totals, milestones, credit rule), with tests in `progress.test.ts`

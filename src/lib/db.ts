@@ -62,6 +62,13 @@ const SCHEMA = [
      sent_at TIMESTAMPTZ NOT NULL DEFAULT now(),
      email_id TEXT
    )`,
+  // v3: next-book suggestions, refreshed after each marked quiz
+  `CREATE TABLE IF NOT EXISTS book_suggestions (
+     id SERIAL PRIMARY KEY,
+     attempt_id INTEGER UNIQUE,
+     data JSONB NOT NULL,
+     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+   )`,
 ];
 
 /**
